@@ -44,6 +44,11 @@ app.get('/', (req, res) => {
   });
 });
 
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://192.168.0.116:3000'],  
+  credentials: true
+}))
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/gebruikers', gebruikerRoutes);
