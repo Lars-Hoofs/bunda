@@ -1,4 +1,3 @@
- 
 /**
  * Bunda API - Gebruiker Routes
  * 
@@ -6,9 +5,13 @@
  */
 
 const express = require('express');
-const gebruikerController = require('../controllers/gebruiker.controller');
 const authMiddleware = require('../middleware/auth.middleware');
 const validatieMiddleware = require('../middleware/validatie.middleware');
+const gebruikerController = require('../controllers/gebruiker.controller');
+
+// Debug logging
+console.log('Controller functions:', Object.keys(gebruikerController));
+console.log('updateGebruiker type:', typeof gebruikerController.updateGebruiker);
 
 const router = express.Router();
 
@@ -40,11 +43,29 @@ router.get(
  * @desc Update gebruiker
  * @access Privé (eigen account of admin)
  */
+// Using a temporary inline function to isolate the issue
 router.put(
   '/:id',
   authMiddleware.authenticeer,
   validatieMiddleware.valideerGebruikerUpdate,
-  gebruikerController.updateGebruiker
+  (req, res, next) => {
+    console.log('Temporary route handler called');
+    try {
+      // If the controller function exists, call it
+      if (typeof gebruikerController.updateGebruiker === 'function') {
+        return gebruikerController.updateGebruiker(req, res, next);
+      } else {
+        console.error('updateGebruiker is not a function:', typeof gebruikerController.updateGebruiker);
+        res.status(500).json({ 
+          succes: false, 
+          bericht: 'Interne serverfout. Probeer het later opnieuw.' 
+        });
+      }
+    } catch (error) {
+      console.error('Error in PUT route handler:', error);
+      next(error);
+    }
+  }
 );
 
 /**

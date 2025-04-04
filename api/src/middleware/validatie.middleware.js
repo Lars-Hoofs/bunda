@@ -1,4 +1,3 @@
- 
 /**
  * Bunda API - Validatie Middleware
  * 
@@ -22,6 +21,81 @@ const valideer = (req, res, next) => {
   
   next();
 };
+
+const valideerFavoriet = [
+  body('woningId')
+    .notEmpty().withMessage('Woning ID is verplicht')
+    .isInt({ min: 1 }).withMessage('Woning ID moet een positief getal zijn'),
+    
+  valideer
+];
+
+const valideerKenmerk = [
+  body('naam')
+    .notEmpty().withMessage('Naam is verplicht')
+    .isLength({ max: 50 }).withMessage('Naam mag maximaal 50 tekens bevatten'),
+    
+  body('categorie')
+    .optional()
+    .isLength({ max: 50 }).withMessage('Categorie mag maximaal 50 tekens bevatten'),
+    
+  valideer
+];
+
+const valideerKenmerkWoning = [
+  body('woningId')
+    .notEmpty().withMessage('Woning ID is verplicht')
+    .isInt({ min: 1 }).withMessage('Woning ID moet een positief getal zijn'),
+    
+  body('kenmerkId')
+    .notEmpty().withMessage('Kenmerk ID is verplicht')
+    .isInt({ min: 1 }).withMessage('Kenmerk ID moet een positief getal zijn'),
+    
+  valideer
+];
+
+// Validatie voor kenmerk update
+const valideerKenmerkUpdate = [
+  body('naam')
+    .optional()
+    .notEmpty().withMessage('Naam mag niet leeg zijn')
+    .isLength({ max: 50 }).withMessage('Naam mag maximaal 50 tekens bevatten'),
+    
+  body('categorie')
+    .optional()
+    .isLength({ max: 50 }).withMessage('Categorie mag maximaal 50 tekens bevatten'),
+    
+  valideer
+];
+
+// Validatie voor gebruiker bijwerken
+const valideerGebruikerUpdate = [
+  body('voornaam')
+    .optional()
+    .notEmpty().withMessage('Voornaam mag niet leeg zijn')
+    .isLength({ max: 50 }).withMessage('Voornaam mag maximaal 50 tekens bevatten'),
+    
+  body('achternaam')
+    .optional()
+    .notEmpty().withMessage('Achternaam mag niet leeg zijn')
+    .isLength({ max: 50 }).withMessage('Achternaam mag maximaal 50 tekens bevatten'),
+  
+  body('telefoon')
+    .optional()
+    .isMobilePhone('any').withMessage('Geldig telefoonnummer vereist'),
+    
+  body('rol')
+    .optional()
+    .isInt({ min: 1, max: 3 }).withMessage('Rol moet 1, 2 of 3 zijn'),
+    
+  body('wachtwoord')
+    .optional()
+    .isLength({ min: 8 }).withMessage('Wachtwoord moet minimaal 8 tekens bevatten')
+    .matches(/\d/).withMessage('Wachtwoord moet minimaal één cijfer bevatten')
+    .matches(/[A-Z]/).withMessage('Wachtwoord moet minimaal één hoofdletter bevatten'),
+    
+  valideer
+];
 
 // Validatie voor registratie
 const valideerRegistratie = [
@@ -61,6 +135,53 @@ const valideerLogin = [
     
   body('wachtwoord')
     .notEmpty().withMessage('Wachtwoord is verplicht'),
+    
+  valideer
+];
+
+// Validatie voor bulk kenmerk operaties
+const valideerBulkKenmerken = [
+  body('kenmerken')
+    .isArray().withMessage('Kenmerken moet een array zijn')
+    .notEmpty().withMessage('Kenmerken array mag niet leeg zijn'),
+    
+  valideer
+];
+
+// Validatie voor kenmerkwaarde
+const valideerKenmerkWaarde = [
+  body('waarde')
+    .notEmpty().withMessage('Waarde is verplicht')
+    .isLength({ max: 100 }).withMessage('Waarde mag maximaal 100 tekens bevatten'),
+    
+  valideer
+];
+
+const valideerWoningKenmerken = [
+  body('kenmerkIds')
+    .isArray().withMessage('Kenmerk IDs moet een array zijn')
+    .notEmpty().withMessage('Kenmerk IDs mag niet leeg zijn'),
+  
+  body('kenmerkIds.*')
+    .isInt({ min: 1 }).withMessage('Elk kenmerk ID moet een positief getal zijn'),
+    
+  valideer
+];
+
+// Validatie voor kenmerk associatie
+const valideerKenmerkAssociatie = [
+  body('associatieType')
+    .optional()
+    .isIn(['optie', 'filter', 'beide']).withMessage('Ongeldig associatie type'),
+    
+  valideer
+];
+
+// Validatie voor zoeken op kenmerken
+const valideerKenmerkZoeken = [
+  body('kenmerkIds')
+    .optional()
+    .isArray().withMessage('Kenmerk IDs moet een array zijn'),
     
   valideer
 ];
@@ -199,11 +320,47 @@ const valideerZoekopdracht = [
   valideer
 ];
 
+const valideerBezichtigingUpdate = [
+  body('bezichtigingDatum')
+    .optional()
+    .isISO8601().withMessage('Bezichtigingsdatum moet een geldig datum/tijd formaat hebben')
+    .custom((waarde) => {
+      const datum = new Date(waarde);
+      const nu = new Date();
+      if (datum <= nu) {
+        throw new Error('Bezichtigingsdatum moet in de toekomst liggen');
+      }
+      return true;
+    }),
+    
+  body('status')
+    .optional()
+    .isIn(['gepland', 'geannuleerd', 'voltooid', 'verplaatst'])
+    .withMessage('Status moet een geldige waarde zijn'),
+    
+  body('notities')
+    .optional()
+    .isLength({ max: 500 }).withMessage('Notities mogen maximaal 500 tekens bevatten'),
+    
+  valideer
+];
+
 module.exports = {
   valideer,
   valideerRegistratie,
   valideerLogin,
   valideerWoning,
   valideerBezichtiging,
-  valideerZoekopdracht
+  valideerZoekopdracht,
+  valideerGebruikerUpdate,
+  valideerFavoriet,
+  valideerKenmerk,
+  valideerKenmerkWoning,
+  valideerKenmerkUpdate,
+  valideerBulkKenmerken,
+  valideerKenmerkWaarde,
+  valideerKenmerkAssociatie,
+  valideerKenmerkZoeken,
+  valideerWoningKenmerken,
+  valideerBezichtigingUpdate  // Add this line
 };

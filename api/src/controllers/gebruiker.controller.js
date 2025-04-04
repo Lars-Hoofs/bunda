@@ -1,4 +1,3 @@
- 
 /**
  * Bunda API - Gebruiker Controller
  * 
@@ -155,6 +154,7 @@ const getGebruikerWoningen = async (req, res, next) => {
   }
 };
 
+// Alternative export style - try this if the other doesn't work
 module.exports = {
   getGebruikers,
   getGebruikerById,
