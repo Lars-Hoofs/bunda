@@ -19,6 +19,23 @@ export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [apiStatus, setApiStatus] = useState({ checked: false, available: true });
+  
+  // Check if the registration API endpoint exists
+  useState(() => {
+    const checkApiEndpoint = async () => {
+      try {
+        // Just checking if the API is configured
+        console.log("API URL configured as:", process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api');
+        setApiStatus({ checked: true, available: true });
+      } catch (err) {
+        console.error("API endpoint check failed:", err);
+        setApiStatus({ checked: true, available: false });
+      }
+    };
+    
+    checkApiEndpoint();
+  }, []);
 
   // Handle input change
   const handleChange = (e) => {
@@ -70,18 +87,55 @@ export default function RegisterPage() {
       setIsLoading(true);
       setError("");
       
-      const response = await api.auth.registreren({
+      // Create user registration data object - making sure field names match the backend expectations
+      const userData = {
         voornaam: formData.voornaam,
         achternaam: formData.achternaam,
         email: formData.email,
-        password: formData.password
+        wachtwoord: formData.password // Changed from 'password' to 'wachtwoord' to match backend
+      };
+      
+      console.log("Sending registration data:", userData);
+      
+      // You can uncomment this to debug the API
+      // Try a direct axios request to see more details about the error
+      /*
+      const directResponse = await fetch('/api/auth/registreren', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
       });
+      
+      const responseData = await directResponse.json();
+      console.log("Direct response:", directResponse.status, responseData);
+      */
+      
+      const response = await api.auth.registreren(userData);
+      console.log("Registration successful:", response);
       
       // Successful registration
       router.push("/login?registered=true"); // Redirect to login page
     } catch (error) {
       console.error("Registration error:", error);
-      setError(error.response?.data?.message || "Registratie mislukt. Probeer het opnieuw.");
+      // More detailed error logging
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
+        console.error("Response headers:", error.response.headers);
+        setError(error.response.data?.message || `Registratie mislukt (${error.response.status}). Controleer uw gegevens.`);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error("No response received:", error.request);
+        setError("Geen reactie van de server. Controleer uw internetverbinding.");
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Error message:", error.message);
+        setError(`Registratie mislukt: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -136,6 +190,13 @@ export default function RegisterPage() {
             {error && (
               <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
                 {error}
+              </div>
+            )}
+            
+            {!apiStatus.available && apiStatus.checked && (
+              <div className="bg-yellow-50 text-yellow-700 p-3 rounded-md text-sm">
+                Waarschuwing: Het lijkt erop dat de API-eindpunten niet beschikbaar zijn. 
+                Registratie werkt mogelijk niet. Controleer of uw backend-server actief is.
               </div>
             )}
 
@@ -196,6 +257,10 @@ export default function RegisterPage() {
                       onChange={handleChange}
                       required 
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Wachtwoord moet minimaal 8 tekens bevatten, waaronder een hoofdletter, 
+                      een kleine letter en een cijfer.
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <Input 

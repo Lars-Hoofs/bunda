@@ -40,16 +40,72 @@ export default function LoginPage() {
       setIsLoading(true);
       setError("");
       
-      const response = await api.auth.inloggen({
+      // Debug the request data
+      const loginData = {
         email,
-        password
-      });
+        wachtwoord: password // Changed from 'password' to 'wachtwoord' to match backend expectations
+      };
+      
+      console.log("Sending login data:", loginData);
+      
+      // Try a direct fetch first to debug
+      try {
+        const directResponse = await fetch('/api/auth/inloggen', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(loginData),
+        });
+        
+        const responseData = await directResponse.json();
+        console.log("Direct API response:", {
+          status: directResponse.status,
+          data: responseData
+        });
+        
+        if (!directResponse.ok) {
+          if (responseData.details && Array.isArray(responseData.details)) {
+            setError(responseData.details.join(", "));
+          } else {
+            setError(responseData.bericht || responseData.message || "Inloggen mislukt. Controleer je gegevens.");
+          }
+          setIsLoading(false);
+          return;
+        }
+      } catch (directError) {
+        console.log("Direct fetch error:", directError);
+      }
+      
+      // Use the API client for actual login
+      const response = await api.auth.inloggen(loginData);
+      
+      console.log("Login successful:", response);
       
       // Successful login
       router.push("/dashboard"); // Redirect to dashboard or home page
     } catch (error) {
       console.error("Login error:", error);
-      setError(error.response?.data?.message || "Inloggen mislukt. Controleer je gegevens.");
+      
+      // Detailed error logging
+      if (error.response) {
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
+        
+        // Check if we have detailed validation errors
+        if (error.response.data?.details && Array.isArray(error.response.data.details)) {
+          setError(error.response.data.details.join(", "));
+        } else {
+          setError(error.response.data?.bericht || error.response.data?.message || 
+                 "Inloggen mislukt. Controleer je gegevens.");
+        }
+      } else if (error.request) {
+        console.error("No response received:", error.request);
+        setError("Geen reactie van de server. Controleer je internetverbinding.");
+      } else {
+        console.error("Error message:", error.message);
+        setError(`Inloggen mislukt: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -228,16 +284,16 @@ export default function LoginPage() {
 
         {/* Right column - Image */}
         <div className="bg-gray-100 rounded-xl overflow-hidden relative hidden md:block">
-        <div className="w-full h-full relative">
-  <Image 
-    src="/images/zoute.jpg"
-    alt="Strand huis een route"
-    fill
-    sizes="(max-width: 768px) 100vw, 50vw"
-    style={{ objectFit: "cover" }}
-    priority
-  />
-</div>
+          <div className="w-full h-full relative">
+            <Image 
+              src="/images/zoute.jpg"
+              alt="Strand huis een route"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              style={{ objectFit: "cover" }}
+              priority
+            />
+          </div>
         </div>
       </div>
     </div>
