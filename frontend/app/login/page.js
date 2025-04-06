@@ -257,7 +257,7 @@ export default function LoginPage() {
                 Nog geen account?{" "}
                 <button 
                   type="button"
-                  onClick={() => router.push("/registreren")}
+                  onClick={() => router.push("/register")}
                   className="text-orange-500 hover:underline"
                 >
                   Registreer hier
