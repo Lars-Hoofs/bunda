@@ -19,13 +19,115 @@ const api = axios.create({
 // Voeg token toe aan requests indien beschikbaar
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+// Implementeer token refresh voor 401 responses
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  
+  failedQueue = [];
+};
+
+api.interceptors.response.use(
+  response => response,
+  async error => {
+    const originalRequest = error.config;
+    
+    // If error is 401 (Unauthorized) and we haven't tried to refresh yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch(err => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+      
+      try {
+        // Try to refresh the token
+        if (typeof window === 'undefined') {
+          throw new Error('Cannot refresh token on server side');
+        }
+        
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (!refreshToken) {
+          throw new Error('Geen verversingstoken beschikbaar');
+        }
+        
+        console.log("Attempting to refresh token");
+        const response = await axios.post(`${API_URL}/auth/vernieuw-token`, { refreshToken });
+        const { token } = response.data;
+        
+        console.log("Token refreshed successfully");
+        
+        try {
+          // Update localStorage with new token
+          localStorage.setItem('token', token);
+          console.log("New token stored in localStorage");
+        } catch (storageError) {
+          console.error("Error storing refreshed token:", storageError);
+          throw storageError;
+        }
+        
+        // Update the authorization header
+        originalRequest.headers.Authorization = `Bearer ${token}`;
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        processQueue(null, token);
+        return api(originalRequest);
+      } catch (refreshError) {
+        console.error("Error during token refresh:", refreshError);
+        processQueue(refreshError, null);
+        
+        // Clear tokens from storage
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+            console.log("Tokens removed from localStorage after failed refresh");
+          } catch (clearError) {
+            console.error("Error clearing tokens:", clearError);
+          }
+        }
+        
+        // Redirect to login page with expired parameter
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?expired=true';
+        }
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+    
+    return Promise.reject(error);
+  }
 );
 
 /**
@@ -44,32 +146,116 @@ export const authAPI = {
     return response.data;
   },
 
-  /**
-   * Log een gebruiker in
-   * @param {Object} credentials - Email en wachtwoord
-   */
-  inloggen: async (credentials) => {
+ /**
+ * Log een gebruiker in
+ * @param {Object} credentials - Email en wachtwoord
+ */
+inloggen: async (credentials) => {
+  try {
+    console.log("Making login request with:", credentials.email);
+    console.log("API URL:", API_URL);
+    
     const response = await api.post('/auth/inloggen', credentials);
-    if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
+    console.log("Login API response status:", response.status);
+    console.log("Login API response data:", response.data);
+    
+    // Log de volledige structuur voor debugging
+    console.log("Full response data structure:", JSON.stringify(response.data, null, 2));
+    
+    // Check op Nederlandse tokennamen (toegangsToken & verversingsToken)
+    if (response.data.data && response.data.data.toegangsToken) {
+      try {
+        console.log("Token gevonden als toegangsToken");
+        localStorage.setItem('token', response.data.data.toegangsToken);
+        if (response.data.data.verversingsToken) {
+          localStorage.setItem('refreshToken', response.data.data.verversingsToken);
+        }
+      } catch (storageError) {
+        console.error("Error storing token in localStorage:", storageError);
+        throw new Error(`Token storage failed: ${storageError.message}`);
+      }
     }
+    // Check op Engelse tokennamen (token & refreshToken)
+    else if (response.data.data && response.data.data.token) {
+      try {
+        console.log("Token gevonden als token");
+        localStorage.setItem('token', response.data.data.token);
+        if (response.data.data.refreshToken) {
+          localStorage.setItem('refreshToken', response.data.data.refreshToken);
+        }
+      } catch (storageError) {
+        console.error("Error storing token in localStorage:", storageError);
+        throw new Error(`Token storage failed: ${storageError.message}`);
+      }
+    }
+    // Check op tokens direct in de response (zonder data object)
+    else if (response.data.token || response.data.toegangsToken) {
+      try {
+        console.log("Token gevonden in root response");
+        localStorage.setItem('token', response.data.token || response.data.toegangsToken);
+        if (response.data.refreshToken || response.data.verversingsToken) {
+          localStorage.setItem('refreshToken', response.data.refreshToken || response.data.verversingsToken);
+        }
+      } catch (storageError) {
+        console.error("Error storing token in localStorage:", storageError);
+        throw new Error(`Token storage failed: ${storageError.message}`);
+      }
+    }
+    else {
+      console.error("Geen token gevonden in verwachte locaties. Response structuur:", 
+                 JSON.stringify(response.data, null, 2));
+      throw new Error("Geen token ontvangen van de server. Controleer de API respons structuur.");
+    }
+    
+    // Verifieer opslag
+    const storedToken = localStorage.getItem('token');
+    console.log("Token stored successfully:", !!storedToken);
+    if (storedToken) {
+      console.log("First 10 chars of stored token:", storedToken.substring(0, 10) + "...");
+    }
+    
     return response.data;
-  },
+  } catch (error) {
+    console.error("Login API error:", error);
+    throw error;
+  }
+},
 
   /**
    * Vernieuw het toegangstoken
    */
   vernieuwToken: async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      throw new Error('Geen verversingstoken beschikbaar');
+    try {
+      if (typeof window === 'undefined') {
+        throw new Error('Cannot refresh token on server side');
+      }
+      
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (!refreshToken) {
+        throw new Error('Geen verversingstoken beschikbaar');
+      }
+      
+      console.log("Attempting to refresh token");
+      const response = await api.post('/auth/vernieuw-token', { refreshToken });
+      console.log("Token refresh response:", response.data);
+      
+      if (response.data.data && response.data.data.token) {
+        try {
+          localStorage.setItem('token', response.data.data.token);
+          console.log("New token stored after refresh");
+        } catch (storageError) {
+          console.error("Error storing refreshed token:", storageError);
+          throw storageError;
+        }
+      } else {
+        console.error("No token in refresh response");
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error("Token refresh error:", error);
+      throw error;
     }
-    const response = await api.post('/auth/vernieuw-token', { refreshToken });
-    if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
-    }
-    return response.data;
   },
 
   /**
@@ -94,16 +280,33 @@ export const authAPI = {
    * Haal het profiel van de ingelogde gebruiker op
    */
   getMijnAccount: async () => {
-    const response = await api.get('/auth/mijn-account');
-    return response.data;
+    try {
+      console.log("Fetching user account");
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      console.log("Token exists for account fetch:", !!token);
+      
+      const response = await api.get('/auth/mijn-account');
+      console.log("User account fetch successful:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching user account:", error);
+      throw error;
+    }
   },
 
   /**
    * Log de gebruiker uit (lokaal)
    */
   uitloggen: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        console.log("Tokens removed during logout");
+      } catch (error) {
+        console.error("Error removing tokens during logout:", error);
+      }
+    }
   }
 };
 
@@ -476,11 +679,71 @@ export const bezichtigingAPI = {
 
 export const beheerderAPI = {
   /**
-   * Haal dashboard statistieken op
+   * Haal dashboard statistieken op met robuuste foutafhandeling
    */
   getDashboardStats: async () => {
-    const response = await api.get('/beheerder/dashboard');
-    return response.data;
+    try {
+      console.log("Fetching dashboard stats from API...");
+      // Probeer de originele API call
+      const response = await api.get('/beheerder/dashboard');
+      console.log("Dashboard stats received successfully:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching dashboard stats from API:", error);
+      
+      // Probeer de statistieken handmatig te berekenen
+      console.log("Calculating stats manually...");
+      
+      try {
+        // Haal woningen op
+        const woningenResponse = await api.get('/beheerder/woningen');
+        const woningen = woningenResponse.data && woningenResponse.data.data ? woningenResponse.data.data : [];
+        
+        // Haal gebruikers op
+        const gebruikersResponse = await api.get('/beheerder/gebruikers');
+        const gebruikers = gebruikersResponse.data && gebruikersResponse.data.data ? gebruikersResponse.data.data : [];
+        
+        // Haal bezichtigingen op (als API endpoint bestaat)
+        let actieveBezichtigingen = 0;
+        try {
+          const bezichtigingenResponse = await api.get('/beheerder/bezichtigingen');
+          const bezichtigingen = bezichtigingenResponse.data && bezichtigingenResponse.data.data ? bezichtigingenResponse.data.data : [];
+          actieveBezichtigingen = bezichtigingen.filter(b => b.status === 'aangevraagd' || b.status === 'bevestigd').length;
+        } catch (bezError) {
+          console.log("Could not fetch viewings data:", bezError);
+        }
+        
+        // Bereken de stats handmatig
+        const stats = {
+          succes: true,
+          bericht: 'Dashboard statistieken handmatig berekend (Server API geeft een fout)',
+          data: {
+            totalUsers: gebruikers.length,
+            totalProperties: woningen.length,
+            featuredProperties: Array.isArray(woningen) ? woningen.filter(w => w.isUitgelicht).length : 0,
+            activeViewings: actieveBezichtigingen
+          }
+        };
+        
+        console.log("Manually calculated stats:", stats);
+        return stats;
+      } catch (manualError) {
+        console.error("Error calculating stats manually:", manualError);
+        
+        // Als alles faalt, retourneer een fallback object
+        return {
+          succes: false,
+          bericht: 'Kon geen dashboard statistieken ophalen of berekenen',
+          data: {
+            totalUsers: 0,
+            totalProperties: 0,
+            featuredProperties: 0,
+            activeViewings: 0
+          },
+          error: error.message
+        };
+      }
+    }
   },
 
   /**
@@ -598,6 +861,61 @@ export const suggestieAPI = {
   }
 };
 
+/**
+ * Hulpfunctie om data veilig uit API responses te halen
+ * Gebruikt voor consistente verwerking van response data
+ */
+export const extractDataFromResponse = (response) => {
+  // Check of de response een succes: true en data veld heeft
+  if (response && response.succes === true && response.data) {
+    return response.data;
+  }
+  
+  // Sommige endpoints kunnen direct een array of object teruggeven zonder wrapper
+  if (response && (Array.isArray(response) || typeof response === 'object')) {
+    return response;
+  }
+  
+  // Fallback: leeg resultaat
+  return Array.isArray(response) ? [] : {};
+};
+
+// Test function for localStorage
+export const testLocalStorage = () => {
+  if (typeof window === 'undefined') {
+    console.log("localStorage not available (server-side)");
+    return false;
+  }
+  
+  try {
+    const testKey = 'bunda-test-key';
+    const testValue = 'works-' + new Date().getTime();
+    
+    // Try to write to localStorage
+    localStorage.setItem(testKey, testValue);
+    
+    // Try to read from localStorage
+    const readValue = localStorage.getItem(testKey);
+    
+    // Clean up
+    localStorage.removeItem(testKey);
+    
+    // Check if the read value matches what we wrote
+    const success = readValue === testValue;
+    console.log("localStorage test:", success ? "PASSED" : "FAILED");
+    return success;
+  } catch (error) {
+    console.error("localStorage test error:", error);
+    return false;
+  }
+};
+
+// Run the test when this module is loaded (client-side only)
+if (typeof window !== 'undefined') {
+  console.log("Testing localStorage capability:");
+  testLocalStorage();
+}
+
 // Exporteer alle API services
 export default {
   auth: authAPI,
@@ -608,5 +926,7 @@ export default {
   favoriet: favorietAPI,
   bezichtiging: bezichtigingAPI,
   beheerder: beheerderAPI,
-  suggestie: suggestieAPI
+  suggestie: suggestieAPI,
+  testLocalStorage,
+  extractDataFromResponse
 };

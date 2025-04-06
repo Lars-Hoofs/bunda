@@ -1,19 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext"; // Import the auth context
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated } = useAuth(); // Use the auth context
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Check if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log("Already authenticated, redirecting to dashboard");
+      router.push("/dashboard");
+    }
+  }, [isAuthenticated, router]);
 
   // Handle email login
   const handleEmailLogin = async (e) => {
@@ -40,59 +50,36 @@ export default function LoginPage() {
       setIsLoading(true);
       setError("");
       
-      // Debug the request data
+      // Login data
       const loginData = {
         email,
-        wachtwoord: password // Changed from 'password' to 'wachtwoord' to match backend expectations
+        wachtwoord: password
       };
       
-      console.log("Sending login data:", loginData);
+      console.log("Attempting login with:", loginData.email);
       
-      // Try a direct fetch first to debug
-      try {
-        const directResponse = await fetch('/api/auth/inloggen', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(loginData),
-        });
-        
-        const responseData = await directResponse.json();
-        console.log("Direct API response:", {
-          status: directResponse.status,
-          data: responseData
-        });
-        
-        if (!directResponse.ok) {
-          if (responseData.details && Array.isArray(responseData.details)) {
-            setError(responseData.details.join(", "));
-          } else {
-            setError(responseData.bericht || responseData.message || "Inloggen mislukt. Controleer je gegevens.");
-          }
-          setIsLoading(false);
-          return;
-        }
-      } catch (directError) {
-        console.log("Direct fetch error:", directError);
+      // Use the auth context login function instead
+      await login(loginData);
+      
+      // Verify token was saved
+      const token = localStorage.getItem('token');
+      console.log("After login, token exists:", !!token);
+      
+      if (!token) {
+        throw new Error("Token niet ontvangen of opgeslagen");
       }
       
-      // Use the API client for actual login
-      const response = await api.auth.inloggen(loginData);
+      // Successful login - redirect to dashboard
+      console.log("Login successful, redirecting to dashboard");
+      router.push("/dashboard");
       
-      console.log("Login successful:", response);
-      
-      // Successful login
-      router.push("/dashboard"); // Redirect to dashboard or home page
     } catch (error) {
       console.error("Login error:", error);
       
-      // Detailed error logging
+      // Handle errors
       if (error.response) {
         console.error("Response data:", error.response.data);
-        console.error("Response status:", error.response.status);
         
-        // Check if we have detailed validation errors
         if (error.response.data?.details && Array.isArray(error.response.data.details)) {
           setError(error.response.data.details.join(", "));
         } else {
@@ -100,10 +87,8 @@ export default function LoginPage() {
                  "Inloggen mislukt. Controleer je gegevens.");
         }
       } else if (error.request) {
-        console.error("No response received:", error.request);
         setError("Geen reactie van de server. Controleer je internetverbinding.");
       } else {
-        console.error("Error message:", error.message);
         setError(`Inloggen mislukt: ${error.message}`);
       }
     } finally {
@@ -295,6 +280,21 @@ export default function LoginPage() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Test button for checking localStorage */}
+      <div className="absolute bottom-4 left-4 z-10">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const token = localStorage.getItem('token');
+            alert(`Token exists: ${!!token}\nFirst 10 chars: ${token ? token.substring(0, 10) + '...' : 'none'}`);
+          }}
+        >
+          Test Token
+        </Button>
       </div>
     </div>
   );
