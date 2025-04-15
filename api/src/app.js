@@ -23,6 +23,9 @@ const beheerderRoutes = require('./routes/beheerder.routes');
 // Error handler middleware
 const errorHandler = require('./middleware/error.middleware');
 
+// Rate limiter middleware
+const { algemeneLimiter, authLimiter, apiLimiter } = require('./middleware/rate-limit.middleware');
+
 // Maak Express app instantie
 const app = express();
 
@@ -30,6 +33,9 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Pas algemene rate limiter toe op alle routes
+app.use(algemeneLimiter);
 
 // Statische bestanden (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '../', appConfig.uploads.afbeeldingenMap)));
@@ -49,15 +55,15 @@ app.use(cors({
   credentials: true
 }))
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/gebruikers', gebruikerRoutes);
-app.use('/api/woningen', woningRoutes);
-app.use('/api/afbeeldingen', afbeeldingRoutes);
-app.use('/api/favorieten', favorietRoutes);
-app.use('/api/kenmerken', kenmerkRoutes);
-app.use('/api/bezichtigingen', bezichtigingRoutes);
-app.use('/api/beheerder', beheerderRoutes);
+// API routes met rate limiting
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/gebruikers', apiLimiter, gebruikerRoutes);
+app.use('/api/woningen', apiLimiter, woningRoutes);
+app.use('/api/afbeeldingen', apiLimiter, afbeeldingRoutes);
+app.use('/api/favorieten', apiLimiter, favorietRoutes);
+app.use('/api/kenmerken', apiLimiter, kenmerkRoutes);
+app.use('/api/bezichtigingen', apiLimiter, bezichtigingRoutes);
+app.use('/api/beheerder', apiLimiter, beheerderRoutes);
 
 // 404 afhandeling
 app.use((req, res, next) => {
