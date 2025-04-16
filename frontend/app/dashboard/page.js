@@ -59,12 +59,14 @@ export default function AdminDashboard() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   
-  // Form states
+  // Form states - Bijgewerkt gebruikersformulier
   const [userForm, setUserForm] = useState({
-    naam: "",
+    voornaam: "",
+    achternaam: "",
     email: "",
-    rol: "koper",
+    wachtwoord: "",
     telefoonnummer: "",
+    rol: "koper",
   });
   
   const [propertyForm, setPropertyForm] = useState({
@@ -245,7 +247,7 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  // Handle user form changes
+  // Handle user form changes - Bijgewerkt
   const handleUserFormChange = (e) => {
     const { name, value } = e.target;
     setUserForm(prev => ({
@@ -263,7 +265,7 @@ export default function AdminDashboard() {
     }));
   };
   
-  // Handle role selection change
+  // Handle role selection change - Bijgewerkt
   const handleRoleChange = (value) => {
     setUserForm(prev => ({
       ...prev,
@@ -279,17 +281,32 @@ export default function AdminDashboard() {
     }));
   };
 
-  // Open edit dialog for user
+  // Open edit dialog for user - Bijgewerkt
   const handleEditUser = (user) => {
     setSelectedItem(user);
+    
+    // Splits naam in voornaam en achternaam als die als een gecombineerd veld binnenkomt
+    let voornaam = user.voornaam || "";
+    let achternaam = user.achternaam || "";
+    
+    // Als alleen een naam-veld is gevuld, splits het
+    if (!voornaam && !achternaam && user.naam) {
+      const nameParts = user.naam.split(' ');
+      voornaam = nameParts[0] || "";
+      achternaam = nameParts.slice(1).join(' ') || "";
+    }
+    
     setUserForm({
-      naam: user.naam || `${user.voornaam || ''} ${user.achternaam || ''}`.trim() || "",
+      voornaam: voornaam,
+      achternaam: achternaam,
       email: user.email || "",
+      wachtwoord: "", // Leeg wachtwoordveld bij bewerken
+      telefoonnummer: user.telefoonnummer || user.telefoon || "",
       rol: typeof user.rol === 'number' ? 
         (user.rol === 3 ? "admin" : user.rol === 2 ? "verkoper" : "koper") : 
         (user.rol || "koper"),
-      telefoonnummer: user.telefoonnummer || user.telefoon || "",
     });
+    
     setIsEditing(true);
     setUserDialogOpen(true);
   };
@@ -312,61 +329,102 @@ export default function AdminDashboard() {
     setPropertyDialogOpen(true);
   };
 
-  // Handle creating/updating a user
+  // Handle creating/updating a user - Bijgewerkt
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     
     try {
       setIsLoading(true);
       
+      // Converteer rollen naar numerieke waarden voor de API
+      const numericRole = 
+        userForm.rol === "admin" ? 3 : 
+        userForm.rol === "verkoper" ? 2 : 1;
+      
       if (isEditing && selectedItem) {
-        // Update existing user
-        await api.gebruiker.updateGebruiker(selectedItem.id, userForm);
+        // Update bestaande gebruiker
+        const updateData = {
+          voornaam: userForm.voornaam,
+          achternaam: userForm.achternaam,
+          email: userForm.email,
+          telefoonnummer: userForm.telefoonnummer,
+        };
         
-        // If role is being changed, also update role
-        if (selectedItem.rol !== userForm.rol) {
-          // Convert string role to numeric role for API
-          const numericRole = 
-            userForm.rol === "admin" ? 3 : 
-            userForm.rol === "verkoper" ? 2 : 1;
-            
+        // Wachtwoord alleen bijwerken als het is ingevuld
+        if (userForm.wachtwoord) {
+          updateData.wachtwoord = userForm.wachtwoord;
+        }
+        
+        // Gebruiker bijwerken
+        await api.gebruiker.updateGebruiker(selectedItem.id, updateData);
+        
+        // Als rol is gewijzigd, update ook de rol
+        if (selectedItem.rol !== userForm.rol) {          
           await api.beheerder.updateGebruikerRol(selectedItem.id, { rol: numericRole });
         }
         
-        // Update user in state
+        // Gebruiker bijwerken in state
         setUsers(users.map(user => 
-          user.id === selectedItem.id ? { ...user, ...userForm } : user
+          user.id === selectedItem.id ? { 
+            ...user, 
+            voornaam: userForm.voornaam,
+            achternaam: userForm.achternaam,
+            naam: `${userForm.voornaam} ${userForm.achternaam}`,
+            email: userForm.email,
+            telefoonnummer: userForm.telefoonnummer,
+            rol: numericRole,
+          } : user
         ));
       } else {
-        // Create new user
+        // Nieuwe gebruiker aanmaken
         const newUserData = {
-          ...userForm,
-          wachtwoord: "tijdelijk123", // Temporary password - in real app, generate or handle differently
-          voornaam: userForm.naam.split(' ')[0],
-          achternaam: userForm.naam.split(' ').slice(1).join(' ') || "-"
+          voornaam: userForm.voornaam,
+          achternaam: userForm.achternaam,
+          email: userForm.email,
+          telefoonnummer: userForm.telefoonnummer,
+          rol: numericRole,
+          wachtwoord: userForm.wachtwoord || "tijdelijk123", // Gebruik ingevoerd wachtwoord of standaard
         };
         
+        // Registreer gebruiker met dezelfde functie als de registratiepagina
         const response = await api.auth.registreren(newUserData);
         const newUser = extractData(response);
         
-        // Add new user to state
-        setUsers([...users, newUser]);
+        // Nieuwe gebruiker toevoegen aan state
+        setUsers([...users, {
+          ...newUser,
+          naam: `${userForm.voornaam} ${userForm.achternaam}`, // Voor weergave in de tabel
+        }]);
       }
       
-      // Close dialog and reset form
+      // Dialog sluiten en formulier resetten
       setUserDialogOpen(false);
       setUserForm({
-        naam: "",
+        voornaam: "",
+        achternaam: "",
         email: "",
-        rol: "koper",
+        wachtwoord: "",
         telefoonnummer: "",
+        rol: "koper",
       });
       setIsEditing(false);
       setSelectedItem(null);
       
     } catch (error) {
       console.error("Error saving user:", error);
-      setError("Er is een fout opgetreden bij het opslaan van de gebruiker.");
+      
+      // Gedetailleerde foutafhandeling
+      if (error.response) {
+        // Fout met specifieke melding van de server
+        setError(error.response.data?.message || 
+          `Fout bij opslaan gebruiker (${error.response.status}): ${error.response.data?.bericht || 'Controleer de gegevens'}`);
+      } else if (error.request) {
+        // Geen antwoord van de server
+        setError("De server reageert niet. Controleer de verbinding.");
+      } else {
+        // Algemene fout
+        setError(`Fout bij opslaan gebruiker: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -512,10 +570,12 @@ export default function AdminDashboard() {
   // Add new user dialog
   const handleAddUser = () => {
     setUserForm({
-      naam: "",
+      voornaam: "",
+      achternaam: "",
       email: "",
-      rol: "koper",
+      wachtwoord: "",
       telefoonnummer: "",
+      rol: "koper",
     });
     setIsEditing(false);
     setSelectedItem(null);
@@ -898,7 +958,7 @@ Tables:
         </div>
       </div>
 
-      {/* User Dialog */}
+      {/* User Dialog - Bijgewerkt */}
       <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -911,19 +971,37 @@ Tables:
           </DialogHeader>
           <form onSubmit={handleUserSubmit}>
             <div className="grid gap-4 py-4">
+              {/* Voornaam */}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="naam" className="text-right">
-                  Naam
+                <Label htmlFor="voornaam" className="text-right">
+                  Voornaam
                 </Label>
                 <Input
-                  id="naam"
-                  name="naam"
-                  value={userForm.naam}
+                  id="voornaam"
+                  name="voornaam"
+                  value={userForm.voornaam}
                   onChange={handleUserFormChange}
                   className="col-span-3"
                   required
                 />
               </div>
+              
+              {/* Achternaam */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="achternaam" className="text-right">
+                  Achternaam
+                </Label>
+                <Input
+                  id="achternaam"
+                  name="achternaam"
+                  value={userForm.achternaam}
+                  onChange={handleUserFormChange}
+                  className="col-span-3"
+                  required
+                />
+              </div>
+              
+              {/* Email */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="email" className="text-right">
                   Email
@@ -938,6 +1016,32 @@ Tables:
                   required
                 />
               </div>
+              
+              {/* Wachtwoord - alleen verplicht bij nieuwe gebruikers */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="wachtwoord" className="text-right">
+                  Wachtwoord
+                </Label>
+                <div className="col-span-3 space-y-1">
+                  <Input
+                    id="wachtwoord"
+                    name="wachtwoord"
+                    type="password"
+                    value={userForm.wachtwoord}
+                    onChange={handleUserFormChange}
+                    className="w-full"
+                    required={!isEditing}
+                    placeholder={isEditing ? "Laat leeg om ongewijzigd te laten" : ""}
+                  />
+                  {!isEditing && (
+                    <p className="text-xs text-gray-500">
+                      Of laat leeg voor standaard wachtwoord "tijdelijk123"
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              {/* Telefoonnummer */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="telefoonnummer" className="text-right">
                   Telefoon
@@ -950,6 +1054,8 @@ Tables:
                   className="col-span-3"
                 />
               </div>
+              
+              {/* Rol */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="rol" className="text-right">
                   Rol
