@@ -4,7 +4,7 @@ const appConfig = require('../config/app.config');
 // Algemene rate limiter voor alle routes
 const algemeneLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 100,
+  max: 500,
   message: {
     succes: false,
     bericht: 'Te veel verzoeken van dit IP-adres, probeer het later opnieuw.',
@@ -16,7 +16,7 @@ const algemeneLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   message: {
     succes: false,
     bericht: 'Te veel inlogpogingen, probeer het later opnieuw.',
@@ -29,7 +29,7 @@ const authLimiter = rateLimit({
 // API route limiter
 const apiLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 200,
+  max: 500,
   message: {
     succes: false,
     bericht: 'Te veel API verzoeken, probeer het later opnieuw.',

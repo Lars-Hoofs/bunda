@@ -56,14 +56,14 @@ app.use(cors({
 }))
 
 // API routes met rate limiting
-app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/gebruikers', apiLimiter, gebruikerRoutes);
-app.use('/api/woningen', apiLimiter, woningRoutes);
-app.use('/api/afbeeldingen', apiLimiter, afbeeldingRoutes);
-app.use('/api/favorieten', apiLimiter, favorietRoutes);
-app.use('/api/kenmerken', apiLimiter, kenmerkRoutes);
-app.use('/api/bezichtigingen', apiLimiter, bezichtigingRoutes);
-app.use('/api/beheerder', apiLimiter, beheerderRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/gebruikers', gebruikerRoutes);
+app.use('/api/woningen', woningRoutes);
+app.use('/api/afbeeldingen', afbeeldingRoutes);
+app.use('/api/favorieten', favorietRoutes);
+app.use('/api/kenmerken', kenmerkRoutes);
+app.use('/api/bezichtigingen', bezichtigingRoutes);
+app.use('/api/beheerder', beheerderRoutes);
 
 // 404 afhandeling
 app.use((req, res, next) => {
